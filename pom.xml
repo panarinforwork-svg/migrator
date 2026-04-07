@@ -1,7 +1,55 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>nstu</groupId>
-  <artifactId>migrator</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
-  <name>migrator</name>
+<project xmlns="http://maven.apache.org/POM/4.0.0" 
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>nstu</groupId>
+    <artifactId>migrator</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>migrator</name>
+    <packaging>jar</packaging>
+    
+    <!-- 🔥 Обязательно: версия Java -->
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+    
+	<dependencies>
+	    <dependency>
+	        <groupId>org.antlr</groupId>
+	        <artifactId>antlr4-runtime</artifactId>
+	        <version>4.13.0</version>
+	    </dependency>
+	    <dependency>
+		    <groupId>org.jooq</groupId>
+		    <artifactId>jooq</artifactId>
+		    <version>3.19.19</version>
+		</dependency>
+	</dependencies>
+
+	<build>
+	    <plugins>
+	        <plugin>
+	            <groupId>org.antlr</groupId>
+	            <artifactId>antlr4-maven-plugin</artifactId>
+	            <version>4.13.0</version>
+	            <configuration>
+	                <!-- Путь к грамматикам -->
+	                <sourceDirectory>${basedir}/src/main/antlr4</sourceDirectory>
+	                <!-- Куда генерировать (по умолчанию уже верно, но можно оставить) -->
+	                <outputDirectory>${project.build.directory}/generated-sources/antlr4</outputDirectory>
+	                <visitor>true</visitor>
+	                <listener>false</listener>
+	                <!-- ❌ УДАЛИТЕ <package> — его не существует! -->
+	            </configuration>
+	            <executions>
+	                <execution>
+	                    <goals><goal>antlr4</goal></goals>
+	                </execution>
+	            </executions>
+	        </plugin>
+	    </plugins>
+	</build>
 </project>
