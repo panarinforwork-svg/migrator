@@ -3,7 +3,6 @@ package migrator.issues;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
 public class UtlHttp implements Issue {
     
     @Override
@@ -47,7 +46,8 @@ public class UtlHttp implements Issue {
     }
     
     private String processUtlHttpRequest(String content) {
-        // Заменяет utl_http.request(...) где угодно (включая внутри substr)
+        // Заменяет utl_http.request(...) на SELECT content FROM http_get(...)
+        // Поддерживает использование внутри substr и других функций
         Pattern pattern = Pattern.compile(
             "utl_http\\.request\\s*\\(\\s*([^,)]+)(?:\\s*,\\s*('[^']*')(?:\\s*,\\s*([^,]+?)(?:\\s*,\\s*('[^']*'))?)?)?\\s*\\)",
             Pattern.CASE_INSENSITIVE
@@ -67,32 +67,32 @@ public class UtlHttp implements Issue {
             
             // Если нет метода или метод GET
             if (method == null || method.equalsIgnoreCase("'GET'")) {
-                replacement = String.format("http_get(%s).content", formattedUrl);
+                replacement = String.format("(SELECT content FROM http_get(%s))", formattedUrl);
             } 
             // POST запрос
             else if (method.equalsIgnoreCase("'POST'")) {
                 String formattedBody = (body != null && !body.trim().isEmpty()) ? body : "NULL";
                 String formattedContentType = (contentType != null) ? contentType : "'application/json'";
-                replacement = String.format("http_post(%s, %s, %s).content", 
+                replacement = String.format("(SELECT content FROM http_post(%s, %s, %s))", 
                     formattedUrl, formattedBody, formattedContentType);
             }
             // PUT запрос
             else if (method.equalsIgnoreCase("'PUT'")) {
                 String formattedBody = (body != null && !body.trim().isEmpty()) ? body : "NULL";
                 String formattedContentType = (contentType != null) ? contentType : "'application/json'";
-                replacement = String.format("http_put(%s, %s, %s).content", 
+                replacement = String.format("(SELECT content FROM http_put(%s, %s, %s))", 
                     formattedUrl, formattedBody, formattedContentType);
             }
             // DELETE запрос
             else if (method.equalsIgnoreCase("'DELETE'")) {
-                replacement = String.format("http_delete(%s).content", formattedUrl);
+                replacement = String.format("(SELECT content FROM http_delete(%s))", formattedUrl);
             }
             // Другие методы
             else {
                 String formattedMethod = method;
                 String formattedBody = (body != null && !body.trim().isEmpty()) ? body : "NULL";
                 String formattedContentType = (contentType != null) ? contentType : "'application/json'";
-                replacement = String.format("http_request(%s, %s, %s, %s).content", 
+                replacement = String.format("(SELECT content FROM http_request(%s, %s, %s, %s))", 
                     formattedUrl, formattedMethod, formattedBody, formattedContentType);
             }
             
