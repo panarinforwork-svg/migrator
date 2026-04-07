@@ -21,12 +21,13 @@ import java.util.stream.Stream;
 import migrator.issues.DbmsLoad;
 import migrator.issues.InitializationBlock;
 import migrator.issues.Issue;
+import migrator.issues.UtlHttp;
 import migrator.params.Parametrs;
 
 public class Searcher {
 	public final String projectPath;
 	
-	public List<Issue> issues = List.of(new InitializationBlock(), new DbmsLoad());
+	public List<Issue> issues = List.of(new InitializationBlock(), new DbmsLoad(), new UtlHttp());
 	
 	
 	public enum ScriptType{
