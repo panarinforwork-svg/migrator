@@ -3,8 +3,6 @@ package migrator.issues;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class UtlHttp implements Issue {
     
@@ -16,6 +14,7 @@ public class UtlHttp implements Issue {
         
         // Обрабатываем различные utl_http функции
         result = processUtlHttpSetTransferTimeout(result);
+        result = processUtlHttpRequest(result);  // Сначала заменяем request
         result = processUtlHttpSetWallet(result);
         result = processUtlHttpSetHeader(result);
         result = processUtlHttpSetResponseErrorCheck(result);
@@ -47,8 +46,64 @@ public class UtlHttp implements Issue {
         return result.toString();
     }
     
+    private String processUtlHttpRequest(String content) {
+        // Заменяет utl_http.request(...) где угодно (включая внутри substr)
+        Pattern pattern = Pattern.compile(
+            "utl_http\\.request\\s*\\(\\s*([^,)]+)(?:\\s*,\\s*('[^']*')(?:\\s*,\\s*([^,]+?)(?:\\s*,\\s*('[^']*'))?)?)?\\s*\\)",
+            Pattern.CASE_INSENSITIVE
+        );
+        
+        StringBuffer result = new StringBuffer();
+        Matcher matcher = pattern.matcher(content);
+        
+        while (matcher.find()) {
+            String url = matcher.group(1).trim();
+            String method = matcher.group(2);
+            String body = matcher.group(3);
+            String contentType = matcher.group(4);
+            
+            String replacement;
+            String formattedUrl = formatValue(url);
+            
+            // Если нет метода или метод GET
+            if (method == null || method.equalsIgnoreCase("'GET'")) {
+                replacement = String.format("http_get(%s).content", formattedUrl);
+            } 
+            // POST запрос
+            else if (method.equalsIgnoreCase("'POST'")) {
+                String formattedBody = (body != null && !body.trim().isEmpty()) ? body : "NULL";
+                String formattedContentType = (contentType != null) ? contentType : "'application/json'";
+                replacement = String.format("http_post(%s, %s, %s).content", 
+                    formattedUrl, formattedBody, formattedContentType);
+            }
+            // PUT запрос
+            else if (method.equalsIgnoreCase("'PUT'")) {
+                String formattedBody = (body != null && !body.trim().isEmpty()) ? body : "NULL";
+                String formattedContentType = (contentType != null) ? contentType : "'application/json'";
+                replacement = String.format("http_put(%s, %s, %s).content", 
+                    formattedUrl, formattedBody, formattedContentType);
+            }
+            // DELETE запрос
+            else if (method.equalsIgnoreCase("'DELETE'")) {
+                replacement = String.format("http_delete(%s).content", formattedUrl);
+            }
+            // Другие методы
+            else {
+                String formattedMethod = method;
+                String formattedBody = (body != null && !body.trim().isEmpty()) ? body : "NULL";
+                String formattedContentType = (contentType != null) ? contentType : "'application/json'";
+                replacement = String.format("http_request(%s, %s, %s, %s).content", 
+                    formattedUrl, formattedMethod, formattedBody, formattedContentType);
+            }
+            
+            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(result);
+        
+        return result.toString();
+    }
+    
     private String processUtlHttpSetWallet(String content) {
-        // utl_http.set_wallet('file:/path', 'password') -> PERFORM http_set_wallet('file:/path', 'password');
         Pattern pattern = Pattern.compile(
             "utl_http\\.set_wallet\\s*\\(\\s*('[^']*')\\s*,\\s*('[^']*')\\s*\\)\\s*;",
             Pattern.CASE_INSENSITIVE
@@ -73,7 +128,6 @@ public class UtlHttp implements Issue {
     }
     
     private String processUtlHttpSetHeader(String content) {
-        // utl_http.set_header(http_req, 'Content-Type', 'application/json');
         Pattern pattern = Pattern.compile(
             "utl_http\\.set_header\\s*\\(\\s*([^,]+)\\s*,\\s*('[^']*')\\s*,\\s*('[^']*')\\s*\\)\\s*;",
             Pattern.CASE_INSENSITIVE
@@ -99,7 +153,6 @@ public class UtlHttp implements Issue {
     }
     
     private String processUtlHttpSetResponseErrorCheck(String content) {
-        // utl_http.set_response_error_check(TRUE);
         Pattern pattern = Pattern.compile(
             "utl_http\\.set_response_error_check\\s*\\(\\s*(TRUE|FALSE|true|false|1|0)\\s*\\)\\s*;",
             Pattern.CASE_INSENSITIVE
@@ -154,17 +207,6 @@ public class UtlHttp implements Issue {
         }
         
         // В остальных случаях считаем, что это переменная или выражение
-        // Проверяем, похоже на переменную (буквы, цифры, подчеркивания)
-        if (trimmed.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
-            return trimmed; // переменная без кавычек
-        }
-        
-        // Если это выражение (содержит операторы или функции)
-        if (trimmed.matches(".*[+\\-*/%()=<>].*")) {
-            return trimmed; // выражение без кавычек
-        }
-        
-        // По умолчанию считаем, что это переменная или выражение
         return trimmed;
     }
 }
