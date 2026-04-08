@@ -20,7 +20,7 @@ public class Application {
         
         Searcher search = new Searcher(params);
         
-        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\migration2\\schema\\packages\\curr_cmop_to_shakht_pkg\\format_xml_package.sql");
+        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\experiments\\migration\\schema\\packages\\signer_api_pkg\\get_package.sql");
         LOGGER.info("Checking file: {}", filePath.getFileName());
         search.checkFile(filePath);
 //        search.searchScripts(ScriptType.PACKAGE);
