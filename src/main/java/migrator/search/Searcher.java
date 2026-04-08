@@ -4,10 +4,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -33,7 +35,7 @@ public class Searcher {
 			new MergeInto(),
 			new FixRecursiveCTE());
 	
-	
+	private Map<Class<?>, List<String>> filesByIssues = new HashMap<>();
 	
 	public enum ScriptType{
 		PACKAGE;
@@ -41,6 +43,7 @@ public class Searcher {
 	
 	public Searcher(Parametrs params) {
 		projectPath = params.path;
+		issues.stream().forEach(x -> filesByIssues.put(x.getClass(), new ArrayList()));
 	}
 	
 	public void searchScripts(ScriptType type) {
@@ -69,15 +72,19 @@ public class Searcher {
     public String checkFile(Path path) {
         try {
             String content = Files.readString(path, StandardCharsets.UTF_8);
-            String result = "";
+            String result = content;
             for (Issue isu : issues) {
-            	content = isu.correct(content);
+            	String tmp = isu.correct(content);
+            	if (!tmp.equals(result)) {
+            		filesByIssues.get(isu.getClass()).add(path.toString());
+            		result = tmp;
+            	}
             }
             if (!result.equals(content)) {
-            	LOGGER.info(path.toString() + " needs to change");
+            	LOGGER.info(path.toString().concat(" needs to change"));
+            	Files.write( path, content.getBytes());
             }
-            Files.write( path, content.getBytes());
-            return content;
+            return result;
         } catch (IOException e) {
             e.printStackTrace();
         }
