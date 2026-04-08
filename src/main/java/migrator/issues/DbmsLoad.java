@@ -23,7 +23,106 @@ public class DbmsLoad implements Issue {
         // Обрабатываем DBMS_LOB.CREATETEMPORARY
         result = processDbmsLobCreateTemporary(result);
         
+        // Обрабатываем dbms_lob.append
+        result = processDbmsLobAppend(result);
+        
+        // Удаляем DBMS_LOB.OPEN
+        result = removeDbmsLobOpen(result);
+        
+        // Удаляем DBMS_LOB.CLOSE
+        result = removeDbmsLobClose(result);
+        
         return result;
+    }
+    
+    private String removeDbmsLobOpen(String content) {
+        // Удаляем DBMS_LOB.OPEN(...);
+        // Пример: DBMS_LOB.OPEN(v_blob, DBMS_LOB.LOB_READWRITE);
+        Pattern pattern = Pattern.compile(
+            "DBMS_LOB\\.OPEN\\s*\\([^)]+\\)\\s*;",
+            Pattern.CASE_INSENSITIVE
+        );
+        
+        String result = content;
+        Matcher matcher = pattern.matcher(result);
+        
+        while (matcher.find()) {
+            // Заменяем на пустую строку (удаляем)
+            result = result.replace(matcher.group(0), "");
+        }
+        
+        // Очищаем лишние пустые строки
+        result = result.replaceAll("\n\\s*\n", "\n");
+        
+        return result;
+    }
+    
+    private String removeDbmsLobClose(String content) {
+        // Удаляем DBMS_LOB.CLOSE(...);
+        // Пример: DBMS_LOB.CLOSE(v_blob);
+        Pattern pattern = Pattern.compile(
+            "DBMS_LOB\\.CLOSE\\s*\\([^)]+\\)\\s*;",
+            Pattern.CASE_INSENSITIVE
+        );
+        
+        String result = content;
+        Matcher matcher = pattern.matcher(result);
+        
+        while (matcher.find()) {
+            // Заменяем на пустую строку (удаляем)
+            result = result.replace(matcher.group(0), "");
+        }
+        
+        // Очищаем лишние пустые строки
+        result = result.replaceAll("\n\\s*\n", "\n");
+        
+        return result;
+    }
+    
+    private String processDbmsLobAppend(String content) {
+        // Ищем dbms_lob.append с именованными параметрами или без
+        // Примеры:
+        // dbms_lob.append(dest_lob => v_clob, src_lob => v_varchar);
+        // dbms_lob.append(v_clob, v_varchar);
+        
+        // Вариант 1: с именованными параметрами
+        Pattern pattern1 = Pattern.compile(
+            "dbms_lob\\.append\\s*\\(\\s*dest_lob\\s*=>\\s*(\\w+)\\s*,\\s*src_lob\\s*=>\\s*(\\w+)\\s*\\)\\s*;",
+            Pattern.CASE_INSENSITIVE
+        );
+        
+        // Вариант 2: без именованных параметров (просто переменные)
+        Pattern pattern2 = Pattern.compile(
+            "dbms_lob\\.append\\s*\\(\\s*(\\w+)\\s*,\\s*(\\w+)\\s*\\)\\s*;",
+            Pattern.CASE_INSENSITIVE
+        );
+        
+        String result = content;
+        
+        // Обрабатываем первый паттерн
+        Matcher matcher1 = pattern1.matcher(result);
+        StringBuffer sb1 = new StringBuffer();
+        while (matcher1.find()) {
+            String dest = matcher1.group(1);
+            String src = matcher1.group(2);
+            String replacement = dest + " := " + dest + " || " + src + ";";
+            matcher1.appendReplacement(sb1, Matcher.quoteReplacement(replacement));
+        }
+        matcher1.appendTail(sb1);
+        result = sb1.toString();
+        
+        // Обрабатываем второй паттерн
+        Matcher matcher2 = pattern2.matcher(result);
+        StringBuffer sb2 = new StringBuffer();
+        while (matcher2.find()) {
+            String dest = matcher2.group(1);
+            String src = matcher2.group(2);
+            String replacement = dest + " := " + dest + " || " + src + ";";
+            matcher2.appendReplacement(sb2, Matcher.quoteReplacement(replacement));
+        }
+        matcher2.appendTail(sb2);
+        
+        return sb2.toString();
     }
     
     private String processDbmsLobCreateTemporary(String content) {
