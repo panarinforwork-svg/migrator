@@ -20,7 +20,52 @@ public class DbmsLoad implements Issue {
         // Обрабатываем lpad
         result = processLpad(result);
         
+        // Обрабатываем DBMS_LOB.CREATETEMPORARY
+        result = processDbmsLobCreateTemporary(result);
+        
         return result;
+    }
+    
+    private String processDbmsLobCreateTemporary(String content) {
+        // Поддерживает разные форматы:
+        // DBMS_LOB.CREATETEMPORARY(v_xml, TRUE);
+        // DBMS_LOB.CREATETEMPORARY(v_xml, TRUE, DBMS_LOB.CALL);
+        // DBMS_LOB.CREATETEMPORARY(lob_loc => v_xml, cache => TRUE);
+        
+        Pattern pattern = Pattern.compile(
+            "DBMS_LOB\\.CREATETEMPORARY\\s*\\([^)]*\\)\\s*;",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+        );
+        
+        StringBuffer result = new StringBuffer();
+        Matcher matcher = pattern.matcher(content);
+        
+        while (matcher.find()) {
+            String match = matcher.group(0);
+            
+            // Извлекаем имя переменной (первый параметр)
+            Pattern varPattern = Pattern.compile(
+                "(?i)(?:lob_loc\\s*=>\\s*)?(\\w+)(?:\\s*[,)])",
+                Pattern.DOTALL
+            );
+            Matcher varMatcher = varPattern.matcher(match);
+            
+            String variable = null;
+            if (varMatcher.find()) {
+                variable = varMatcher.group(1);
+            }
+            
+            if (variable != null) {
+                String replacement = variable + " := '';";
+                matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+            } else {
+                // Если не удалось извлечь переменную, комментируем строку
+                matcher.appendReplacement(result, Matcher.quoteReplacement("-- " + match));
+            }
+        }
+        matcher.appendTail(result);
+        
+        return result.toString();
     }
     
     private String processDbmsLobRead(String content) {
