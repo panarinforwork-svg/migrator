@@ -11,6 +11,6 @@ public class Application {
 		Parametrs params = new Parametrs(args);
 		Searcher search = new Searcher(params);
 //		search.searchScripts(ScriptType.PACKAGE);
-		search.checkFile(Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\migration2\\schema\\packages\\curriculum_diff_pkg\\set_disc_for_diff_curr_package.sql"));
+		search.checkFile(Path.of("C:\\Users\\panarin\\Desktop\\svoe\\valid-package\\error\\okso_key_words_pkg_package\\get_words_package.sql"));
 	}
 }

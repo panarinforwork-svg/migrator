@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import migrator.issues.DbmsLoad;
+import migrator.issues.FixRecursiveCTE;
 import migrator.issues.InitializationBlock;
 import migrator.issues.Issue;
 import migrator.issues.MergeInto;
@@ -32,7 +33,8 @@ public class Searcher {
 			new InitializationBlock(), 
 			new DbmsLoad(), 
 			new UtlHttp(),
-			new MergeInto());
+			new MergeInto(),
+			new FixRecursiveCTE());
 	
 	
 	public enum ScriptType{
