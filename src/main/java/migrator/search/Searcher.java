@@ -1,23 +1,17 @@
 package migrator.search;
 
-import java.io.File;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Deque;
 import java.util.List;
-import java.util.Stack;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import migrator.Application;
 import migrator.issues.DbmsLoad;
 import migrator.issues.FixRecursiveCTE;
 import migrator.issues.InitializationBlock;
@@ -25,9 +19,11 @@ import migrator.issues.Issue;
 import migrator.issues.MergeInto;
 import migrator.issues.UtlHttp;
 import migrator.params.Parametrs;
+import utils.FilesUtils;
 
 public class Searcher {
 	public final String projectPath;
+	private static final Logger LOGGER = LogManager.getLogger(Application.class);
 	
 	private List<Issue> issues = List.of(
 			new InitializationBlock(), 
@@ -48,7 +44,7 @@ public class Searcher {
 	public void searchScripts(ScriptType type) {
 		switch (type) {
 		case PACKAGE:
-			searchPackageScript();
+			packageReplacer();
 			break;
 
 		default:
@@ -56,33 +52,23 @@ public class Searcher {
 		}
 	}
 	
-	private void searchPackageScript() {
-		String packagePath = projectPath + "/schema/packages";
-		findCorruptedFiles(Path.of(projectPath), "sql");
+	private void packageReplacer() {
+		List<Path> paths = FilesUtils.searchPackages(projectPath);
+		ExecutorService executor = Executors.newFixedThreadPool(5);
+		paths.stream().forEach(x -> executor.submit(() -> checkFile(x)));
 	}
-	
-    public void findCorruptedFiles(Path startDir, String extension) {
-        if (!Files.isDirectory(startDir)) {
-            System.err.println("Путь не является директорией: " + startDir);
-            return;
-        }
-
-        try (Stream<Path> walk = Files.walk(startDir)) {
-            walk.filter(Files::isRegularFile)
-                .filter(p -> p.getFileName().toString().toLowerCase().endsWith(extension))
-                .forEach(x -> this.checkFile(x));
-        } catch (IOException e) {
-            System.err.println("Ошибка обхода файловой системы: " + e.getMessage());
-        }
-    }
     
     public String checkFile(Path path) {
         try {
             String content = Files.readString(path, StandardCharsets.UTF_8);
+            String result = "";
             for (Issue isu : issues) {
-            	content = isu.correct(content);
+            	result = isu.correct(content);
             }
-            Files.write( path, content.getBytes());
+            if (!result.equals(content)) {
+            	LOGGER.info(path.toString() + " needs to change");
+            }
+//            Files.write( path, content.getBytes());
             return content;
         } catch (IOException e) {
             e.printStackTrace();

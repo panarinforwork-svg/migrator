@@ -13,7 +13,7 @@ public class UtlHttp implements Issue {
         
         // Обрабатываем различные utl_http функции
         result = processUtlHttpSetTransferTimeout(result);
-        result = processUtlHttpRequest(result);  // Сначала заменяем request
+        result = processUtlHttpRequest(result);
         result = processUtlHttpSetWallet(result);
         result = processUtlHttpSetHeader(result);
         result = processUtlHttpSetResponseErrorCheck(result);
