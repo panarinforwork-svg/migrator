@@ -32,7 +32,27 @@ public class DbmsLoad implements Issue {
         // Удаляем DBMS_LOB.CLOSE
         result = removeDbmsLobClose(result);
         
+        // Удаляем DBMS_LOB.FREETEMPORARY
+        result = processDbmsLobFreeTemporary(result);
+        
         return result;
+    }
+    
+    private String processDbmsLobFreeTemporary(String content) {
+        Pattern pattern = Pattern.compile(
+            "DBMS_LOB\\.FREETEMPORARY\\s*\\(\\s*\\w+\\s*\\)\\s*;",
+            Pattern.CASE_INSENSITIVE
+        );
+        
+        StringBuffer result = new StringBuffer();
+        Matcher matcher = pattern.matcher(content);
+        
+        while (matcher.find()) {
+            matcher.appendReplacement(result, "");
+        }
+        matcher.appendTail(result);
+        
+        return result.toString().replaceAll("\n\\s*\n", "\n");
     }
     
     private String removeDbmsLobOpen(String content) {
