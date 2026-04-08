@@ -20,10 +20,10 @@ public class Application {
         
         Searcher search = new Searcher(params);
         
-        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\valid-package\\error\\okso_key_words_pkg_package\\get_words_package.sql");
+        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\migration2\\schema\\packages\\curr_cmop_to_shakht_pkg\\format_xml_package.sql");
         LOGGER.info("Checking file: {}", filePath.getFileName());
-        
-        search.searchScripts(ScriptType.PACKAGE);
+        search.checkFile(filePath);
+//        search.searchScripts(ScriptType.PACKAGE);
         
         LOGGER.info("Application finished");
     }

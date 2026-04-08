@@ -74,7 +74,7 @@ public class Searcher {
             String content = Files.readString(path, StandardCharsets.UTF_8);
             String result = content;
             for (Issue isu : issues) {
-            	String tmp = isu.correct(content);
+            	String tmp = isu.correct(result);
             	if (!tmp.equals(result)) {
             		filesByIssues.get(isu.getClass()).add(path.toString());
             		result = tmp;
@@ -82,7 +82,7 @@ public class Searcher {
             }
             if (!result.equals(content)) {
             	LOGGER.info(path.toString().concat(" needs to change"));
-            	Files.write( path, content.getBytes());
+            	Files.write( path, result.getBytes());
             }
             return result;
         } catch (IOException e) {
