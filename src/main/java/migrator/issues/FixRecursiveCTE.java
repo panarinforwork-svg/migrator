@@ -11,34 +11,39 @@ public class FixRecursiveCTE implements Issue {
         
         String result = content;
         
-        // Преобразуем неправильный RECURSIVE CTE в GENERATE_SERIES
-        result = fixRecursiveCTEToGenerateSeries(result);
-        
-        // Дополнительная очистка от артефактов
-        result = cleanUpRemainingArtifacts(result);
+        // Преобразуем RECURSIVE CTE с двумя селектами в GENERATE_SERIES
+        result = transformRecursiveCTE(result);
         
         return result;
     }
     
-    private String fixRecursiveCTEToGenerateSeries(String content) {
-        // Ищем конструкцию WITH RECURSIVE cte AS ( ... ) SELECT * FROM cte
+    private String transformRecursiveCTE(String content) {
+        // Ищем блок WITH RECURSIVE ... SELECT * FROM cte
         Pattern pattern = Pattern.compile(
-            "(?i)WITH\\s+RECURSIVE\\s+(\\w+)\\s+AS\\s*\\(\\s*SELECT\\s+level\\s+(\\w+)\\s+level\\s*<\\s*(\\d+)\\s+UNION\\s+ALL\\s+SELECT\\s+level\\s+\\2\\s+level\\s*<\\s*\\d+\\s+JOIN\\s+\\1\\s+\\w+\\s+ON\\s*\\(\\)\\s*\\)\\s*SELECT\\s+\\*\\s+FROM\\s+\\1",
-            Pattern.DOTALL
+            "(?i)WITH\\s+RECURSIVE\\s+\\w+\\s+AS\\s*\\(\\s*SELECT\\s+(.*?)\\s+level\\s*<\\s*(\\d+)\\s+UNION\\s+ALL\\s+SELECT\\s+.*?\\s+level\\s*<\\s*\\d+\\s+JOIN\\s+\\w+\\s+\\w+\\s+ON\\s*\\(\\)\\s*\\)\\s*SELECT\\s+\\*\\s+FROM\\s+\\w+(.*)",
+            Pattern.DOTALL | Pattern.CASE_INSENSITIVE
         );
         
         StringBuffer result = new StringBuffer();
         Matcher matcher = pattern.matcher(content);
         
         while (matcher.find()) {
-            String columnName = matcher.group(2);
-            String maxValue = matcher.group(3);
+            String selectColumns = matcher.group(1);
+            String maxLevel = matcher.group(2);
+            String orderByClause = matcher.group(3);
             
-            // Заменяем на простой GENERATE_SERIES
+            // Очищаем колонки от "level < N" в конце
+            selectColumns = cleanSelectColumns(selectColumns);
+            
+            // level < N → GENERATE_SERIES(1, N-1)
+            int endAt = Integer.parseInt(maxLevel) - 1;
+            
+            // Формируем новый SELECT
             String replacement = String.format(
-                "SELECT GENERATE_SERIES(1, %s) AS %s",
-                maxValue,
-                columnName
+                "SELECT %s\n    FROM GENERATE_SERIES(1, %d) AS level%s",
+                selectColumns,
+                endAt,
+                orderByClause != null ? orderByClause : ""
             );
             
             matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
@@ -48,15 +53,16 @@ public class FixRecursiveCTE implements Issue {
         return result.toString();
     }
     
-    private String cleanUpRemainingArtifacts(String content) {
-        String result = content;
+    private String cleanSelectColumns(String columns) {
+        // Убираем "level < N" в конце каждой строки
+        String cleaned = columns.replaceAll("(?i)\\s+level\\s*<\\s*\\d+\\s*", "");
         
-        // Удаляем лишние скобки вокруг подзапроса
-        result = result.replaceAll("\\(\\s*SELECT\\s+GENERATE_SERIES", "(SELECT GENERATE_SERIES");
+        // Убираем лишние пробелы
+        cleaned = cleaned.replaceAll("\\s+", " ");
         
-        // Исправляем "from (SELECT GENERATE_SERIES...) n" -> "from (SELECT GENERATE_SERIES...) n"
-        result = result.replaceAll("from\\s+\\(\\s*SELECT\\s+GENERATE_SERIES", "from (SELECT GENERATE_SERIES");
+        // Убираем пробелы перед запятыми
+        cleaned = cleaned.replaceAll("\\s+,", ",");
         
-        return result;
+        return cleaned.trim();
     }
 }
