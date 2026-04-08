@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -33,6 +34,7 @@ public class Searcher {
 			new FixRecursiveCTE());
 	
 	
+	
 	public enum ScriptType{
 		PACKAGE;
 	}
@@ -53,9 +55,15 @@ public class Searcher {
 	}
 	
 	private void packageReplacer() {
-		List<Path> paths = FilesUtils.searchPackages(projectPath);
-		ExecutorService executor = Executors.newFixedThreadPool(5);
-		paths.stream().forEach(x -> executor.submit(() -> checkFile(x)));
+	    List<Path> paths = FilesUtils.searchPackages(projectPath);
+	    ExecutorService executor = Executors.newFixedThreadPool(5);
+	    
+	    // Отправляем задачи
+	    paths.forEach(path -> executor.submit(() -> checkFile(path)));
+	    
+	    executor.shutdown();
+	    
+	    LOGGER.info("All {} files processed", paths.size());
 	}
     
     public String checkFile(Path path) {
@@ -63,12 +71,12 @@ public class Searcher {
             String content = Files.readString(path, StandardCharsets.UTF_8);
             String result = "";
             for (Issue isu : issues) {
-            	result = isu.correct(content);
+            	content = isu.correct(content);
             }
             if (!result.equals(content)) {
             	LOGGER.info(path.toString() + " needs to change");
             }
-//            Files.write( path, content.getBytes());
+            Files.write( path, content.getBytes());
             return content;
         } catch (IOException e) {
             e.printStackTrace();
