@@ -58,6 +58,11 @@ public class InitializationBlock implements Issue {
 	            toDelete.add(begins.get(begins.size()-1));
 	            toDelete.add(bodyPositions.get(i));
 	        }
+
+	        if (begins.get(begins.size()-1) > ends.get(ends.size()-1)) {
+	        	toDelete.add(begins.get(begins.size()-1));
+	        	toDelete.add(bodyPositions.get(i));
+	        }
 	    }
 
 	    StringBuilder sb = new StringBuilder(content);

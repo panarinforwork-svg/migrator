@@ -19,11 +19,11 @@ public class Application {
         LOGGER.debug("Params initialized: {}", params);
         
         Searcher search = new Searcher(params);
-        
-        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\migration2\\schema\\packages\\curriculum_pkg_test\\set_disc_bad_package.sql");
-        LOGGER.info("Checking file: {}", filePath.getFileName());
-        search.checkFile(filePath);
-//        search.searchScripts(ScriptType.PACKAGE);
+        // для отладки
+//        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\migration\\schema\\packages\\comp_model_pkg\\copy_model_package.sql");
+//        LOGGER.info("Checking file: {}", filePath.getFileName());
+//        search.checkFile(filePath);
+        search.searchScripts(ScriptType.PACKAGE);
         
         LOGGER.info("Application finished");
     }

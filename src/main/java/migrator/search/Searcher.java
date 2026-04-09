@@ -33,7 +33,9 @@ public class Searcher {
 			new DbmsLoad(), 
 			new UtlHttp(),
 			new MergeInto(),
-			new FixRecursiveCTE());
+			new FixRecursiveCTE()
+//			new RecordIssue()
+			);
 	
 	private Map<Class<?>, List<String>> filesByIssues = new HashMap<>();
 	

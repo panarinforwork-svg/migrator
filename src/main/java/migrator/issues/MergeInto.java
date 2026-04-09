@@ -1,16 +1,31 @@
 package migrator.issues;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.CodePointCharStream;
+import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.tree.ParseTree;
+
+import com.tshprecher.postgres.antlr4.PostgreSQLLexer;
+import com.tshprecher.postgres.antlr4.PostgreSQLParser;
+import com.tshprecher.postgres.antlr4.PostgreSQLParserBaseListener;
+
+
 public class MergeInto implements Issue {
-    
+
     @Override
     public String correct(String content) {
         content = moveWhere(content);
         
+        // Выводим дерево разбора
         return content;
     }
     
