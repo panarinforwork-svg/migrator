@@ -20,21 +20,23 @@ import migrator.issues.FixRecursiveCTE;
 import migrator.issues.InitializationBlock;
 import migrator.issues.Issue;
 import migrator.issues.MergeInto;
+import migrator.issues.ProcedureCall;
 import migrator.issues.UtlHttp;
 import migrator.params.Parametrs;
 import utils.FilesUtils;
 
 public class Searcher {
 	public final String projectPath;
-	private static final Logger LOGGER = LogManager.getLogger(Application.class);
+	private static final Logger LOGGER = LogManager.getLogger(Searcher.class);
 	
 	private List<Issue> issues = List.of(
 			new InitializationBlock(), 
 			new DbmsLoad(), 
 			new UtlHttp(),
 			new MergeInto(),
-			new FixRecursiveCTE()
-//			new RecordIssue()
+			new FixRecursiveCTE(),
+//			new ProcedureCall()
+			new ProcedureCall()
 			);
 	
 	private Map<Class<?>, List<String>> filesByIssues = new HashMap<>();

@@ -15,11 +15,19 @@
 			<artifactId>log4j-core</artifactId>
 			<version>2.17.1</version>
 		</dependency>
-		<dependency>
+		<!-- 
+			<dependency>
 		    <groupId>com.tshprecher</groupId>
 		    <artifactId>antlr-psql</artifactId>
-		    <version>0.1-SNAPSHOT</version> <!-- версия из pom.xml -->
-		</dependency>
+		    <version>0.1-SNAPSHOT</version>
+		</dependency> 
+		-->
+	    <dependency>
+	        <groupId>com.oracle.database.jdbc</groupId>
+	        <artifactId>ojdbc11</artifactId>
+	        <version>23.3.0.23.09</version>
+    	</dependency>
+    	
 	</dependencies>
 	
     <properties>
