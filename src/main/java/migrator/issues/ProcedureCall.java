@@ -26,17 +26,36 @@ public class ProcedureCall implements Issue {
         String[] lines = content.split("\n", -1);
         List<String> resultLines = new ArrayList<>();
         
+        boolean insideBlockComment = false;
+        
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
             String trimmed = line.trim();
             
-            // Пропускаем строки, которые уже содержат CALL
-            if (trimmed.toUpperCase().startsWith("CALL ")) {
+            // Проверяем, находимся ли внутри блочного комментария
+            if (insideBlockComment) {
                 resultLines.add(line);
+                // Проверяем, не закрывается ли комментарий в этой строке
+                if (line.contains("*/")) {
+                    insideBlockComment = false;
+                }
                 continue;
             }
             
-            // Пропускаем комментарии
+            // Проверяем начало блочного комментария
+            int blockCommentStart = line.indexOf("/*");
+            if (blockCommentStart != -1) {
+                // Проверяем, не закрывается ли комментарий в этой же строке
+                int blockCommentEnd = line.indexOf("*/", blockCommentStart + 2);
+                if (blockCommentEnd == -1) {
+                    // Комментарий не закрыт в этой строке
+                    insideBlockComment = true;
+                    resultLines.add(line);
+                    continue;
+                }
+            }
+            
+            // Пропускаем однострочные комментарии
             if (trimmed.startsWith("--")) {
                 resultLines.add(line);
                 continue;
@@ -44,6 +63,12 @@ public class ProcedureCall implements Issue {
             
             // Проверяем, является ли строка началом вызова процедуры
             if (isProcedureCallStart(line)) {
+                // Проверяем, что вызов не внутри комментария
+                if (isInsideComment(line, blockCommentStart)) {
+                    resultLines.add(line);
+                    continue;
+                }
+                
                 // Проверяем, не является ли это функцией в выражении
                 if (isInExpression(line)) {
                     resultLines.add(line);
@@ -87,6 +112,24 @@ public class ProcedureCall implements Issue {
         }
         
         return String.join("\n", resultLines);
+    }
+
+    private boolean isInsideComment(String line, int blockCommentStart) {
+        // Проверяем, есть ли закрывающий комментарий перед вызовом
+        int callStart = line.indexOf("(");
+        if (callStart == -1) return false;
+        
+        // Проверяем, нет ли /* перед вызовом
+        int lastBlockStart = line.lastIndexOf("/*", callStart);
+        if (lastBlockStart != -1) {
+            // Проверяем, не закрыт ли этот комментарий перед вызовом
+            int lastBlockEnd = line.lastIndexOf("*/", callStart);
+            if (lastBlockEnd == -1 || lastBlockEnd < lastBlockStart) {
+                return true; // Мы внутри блочного комментария
+            }
+        }
+        
+        return false;
     }
     
     private boolean isProcedureCallStart(String line) {
