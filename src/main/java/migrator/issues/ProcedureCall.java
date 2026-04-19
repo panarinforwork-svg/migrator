@@ -211,44 +211,39 @@ public class ProcedureCall implements Issue {
         String packageName = parts[0];
         String subprogramName = parts[1];
         
-        String sql = 
-            "SELECT " +
-            "   a.PACKAGE_NAME, " +
-            "   a.OBJECT_NAME AS subprogram_name, " +
-            "   a.SUBPROGRAM_ID, " +
-            "   CASE " +
-            "       WHEN EXISTS (SELECT 1 FROM ALL_ARGUMENTS a2 " +
-            "                    WHERE a2.OBJECT_ID = a.OBJECT_ID " +
-            "                      AND a2.SUBPROGRAM_ID = a.SUBPROGRAM_ID " +
-            "                      AND a2.POSITION = 0 " +
-            "                      AND a2.ARGUMENT_NAME IS NULL) " +
-            "       THEN 'FUNCTION' " +
-            "       ELSE 'PROCEDURE' " +
-            "   END AS subprogram_type, " +
-            "   a.ARGUMENT_NAME, " +
-            "   a.POSITION, " +
-            "   a.IN_OUT, " +
-            "   a.DATA_TYPE, " +
-            "   a.DATA_LENGTH, " +
-            "   a.CHAR_LENGTH, " +
-            "   a.DATA_PRECISION, " +
-            "   a.DATA_SCALE, " +
-            "   a.DEFAULT_VALUE " +   // колонка доступна в Oracle 12c+
-            "FROM ALL_ARGUMENTS a " +
-            "WHERE a.PACKAGE_NAME = ? " +
-            "  AND a.OBJECT_NAME = ? " +
-            "  AND a.DATA_LEVEL = 0 " +
-            "ORDER BY a.SUBPROGRAM_ID, a.POSITION";
-        
         Map<Integer, SubprogramInfo> infoMap = new HashMap<>();
+        
+        // 1. Загружаем информацию из ALL_ARGUMENTS (работает даже в старых версиях)
+        String sqlArgs = 
+            "SELECT " +
+            "   PACKAGE_NAME, " +
+            "   OBJECT_NAME AS subprogram_name, " +
+            "   SUBPROGRAM_ID, " +
+            "   ARGUMENT_NAME, " +
+            "   POSITION, " +
+            "   IN_OUT, " +
+            "   DATA_TYPE, " +
+            "   DATA_LENGTH, " +
+            "   CHAR_LENGTH, " +
+            "   DATA_PRECISION, " +
+            "   DATA_SCALE, " +
+            "   DEFAULT_VALUE " +
+            "FROM ALL_ARGUMENTS " +
+            "WHERE PACKAGE_NAME = ? " +
+            "  AND OBJECT_NAME = ? " +
+            "  AND DATA_LEVEL = 0 " +
+            "ORDER BY SUBPROGRAM_ID, POSITION";
+        
+        boolean hasAnyRows = false;
         try (Connection conn = createNewConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+             PreparedStatement pstmt = conn.prepareStatement(sqlArgs)) {
             
             pstmt.setString(1, packageName);
             pstmt.setString(2, subprogramName);
             
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
+                    hasAnyRows = true;
                     int subId = rs.getInt("SUBPROGRAM_ID");
                     SubprogramInfo info = infoMap.get(subId);
                     if (info == null) {
@@ -256,15 +251,18 @@ public class ProcedureCall implements Issue {
                         info.packageName = rs.getString("PACKAGE_NAME");
                         info.subprogramName = rs.getString("subprogram_name");
                         info.subprogramId = subId;
-                        info.subprogramType = rs.getString("subprogram_type");
+                        info.subprogramType = "PROCEDURE"; // временно, будет уточнено ниже
                         info.parameters = new ArrayList<>();
                         infoMap.put(subId, info);
                     }
+                    
                     String argName = rs.getString("ARGUMENT_NAME");
                     int position = rs.getInt("POSITION");
                     String defaultValue = rs.getString("DEFAULT_VALUE");
                     
-                    if (position == 0 && "FUNCTION".equals(info.subprogramType)) {
+                    if (position == 0 && (argName == null || argName.isEmpty())) {
+                        // Это возвращаемое значение функции
+                        info.subprogramType = "FUNCTION";
                         info.returnType = rs.getString("DATA_TYPE");
                         info.returnLength = rs.getInt("DATA_LENGTH");
                     } else if (argName != null && !argName.isEmpty()) {
@@ -283,16 +281,54 @@ public class ProcedureCall implements Issue {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("Ошибка при загрузке информации о подпрограмме: " + fullName);
-            if (debug) e.printStackTrace();
+            System.err.println("Ошибка при загрузке аргументов: " + e.getMessage());
             return;
         }
         
-        // Сохраняем каждую перегрузку в кеш с уникальным ключом
+        // 2. Если нет записей в ALL_ARGUMENTS – подпрограмма без параметров
+        if (!hasAnyRows) {
+            // Определяем тип через USER_SOURCE
+            String sqlType = 
+                "SELECT CASE " +
+                "   WHEN EXISTS (SELECT 1 FROM USER_SOURCE " +
+                "                WHERE NAME = ? " +
+                "                  AND TYPE = 'PACKAGE' " +
+                "                  AND UPPER(TEXT) LIKE '%FUNCTION ' || UPPER(?) || '%' " +
+                "                  AND INSTR(UPPER(TEXT), 'FUNCTION ' || UPPER(?)) > 0) " +
+                "   THEN 'FUNCTION' ELSE 'PROCEDURE' END AS subprogram_type " +
+                "FROM DUAL";
+            
+            String subprogramType = "PROCEDURE"; // по умолчанию
+            try (Connection conn = createNewConnection();
+                 PreparedStatement pstmt = conn.prepareStatement(sqlType)) {
+                
+                pstmt.setString(1, packageName);
+                pstmt.setString(2, subprogramName);
+                pstmt.setString(3, subprogramName);
+                
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        subprogramType = rs.getString("subprogram_type");
+                    }
+                }
+            } catch (SQLException e) {
+                System.err.println("Ошибка при определении типа: " + e.getMessage());
+                // Оставляем PROCEDURE по умолчанию
+            }
+            
+            SubprogramInfo info = new SubprogramInfo();
+            info.packageName = packageName;
+            info.subprogramName = subprogramName;
+            info.subprogramId = 1;
+            info.subprogramType = subprogramType;
+            info.parameters = new ArrayList<>();
+            infoMap.put(1, info);
+        }
+        
+        // 3. Сохраняем в кеш
         for (SubprogramInfo info : infoMap.values()) {
             String key = fullName.toUpperCase() + "#" + info.subprogramId;
             subprogramCache.put(key, info);
-            // Также сохраняем первую как основную (для обратной совместимости)
             if (!subprogramCache.containsKey(fullName.toUpperCase())) {
                 subprogramCache.put(fullName.toUpperCase(), info);
             }
