@@ -30,18 +30,18 @@ public class OracleConnection {
     /**
      * Инициализация подключения к БД
      */
-    private void initConnection() {
+    private Connection initConnection() {
         try {
             // Загружаем JDBC драйвер Oracle (для старых версий Java)
             Class.forName("oracle.jdbc.driver.OracleDriver");
 
             // Создаем подключение
-            this.connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
+            Connection con = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
 
             // Настраиваем автокоммит (по умолчанию true, можно отключить)
-            this.connection.setAutoCommit(true);
+            con.setAutoCommit(true);
 
-            System.out.println("Подключение к Oracle БД успешно установлено");
+            return con;
 
         } catch (ClassNotFoundException e) {
             System.err.println("Oracle JDBC Driver не найден!");
@@ -74,17 +74,7 @@ public class OracleConnection {
      * @return Connection объект
      */
     public Connection getConnection() {
-        try {
-            // Проверяем, не закрыто ли соединение. Если закрыто - пересоздаем
-            if (connection == null || connection.isClosed()) {
-                System.out.println("Соединение закрыто или null. Переподключаемся...");
-                initConnection();
-            }
-        } catch (SQLException e) {
-            System.err.println("Ошибка при проверке состояния соединения");
-            initConnection(); // Пытаемся переподключиться
-        }
-        return connection;
+        return initConnection(); 
     }
 
     /**

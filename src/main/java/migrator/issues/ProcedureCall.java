@@ -12,11 +12,21 @@ import java.sql.*;
 import java.util.*;
 import java.util.regex.*;
 
+import oracle.jdbc.pool.OracleDataSource;
+import java.sql.*;
+import java.util.*;
+import java.util.regex.*;
+
 public class ProcedureCall implements Issue {
     
     private final Set<String> procedureCache = new HashSet<>();
     private final Map<String, SubprogramInfo> subprogramCache = new HashMap<>();
     private boolean debug = false;
+    
+    // Параметры подключения – вынесите в конфиг при необходимости
+    private static final String DB_URL = "jdbc:oracle:thin:@localhost:1521/ORCLPDB1";
+    private static final String DB_USER = "CMOP";
+    private static final String DB_PASSWORD = "CMOP";
     
     @Override
     public String correct(String content) {
@@ -65,7 +75,6 @@ public class ProcedureCall implements Issue {
                     continue;
                 }
                 
-                // Собираем полный вызов (может быть на нескольких строках)
                 StringBuilder fullCall = new StringBuilder(line);
                 int j = i + 1;
                 if (!isCallComplete(line)) {
@@ -133,42 +142,196 @@ public class ProcedureCall implements Issue {
         if (nameMatcher.find()) {
             String fullName = nameMatcher.group(1);
             List<String> actualArgs = extractArgumentList(callText);
-            SubprogramInfo info = getSubprogramInfo(fullName);
+            SubprogramInfo info = findBestMatchingSubprogram(fullName, actualArgs);
             if (info != null && "PROCEDURE".equals(info.subprogramType)) {
-                // Сравниваем количество аргументов
-                if (actualArgs.size() == info.parameters.size()) {
-                    String indent = "";
-                    int firstNonSpace = 0;
-                    while (firstNonSpace < callText.length() && callText.charAt(firstNonSpace) == ' ') {
-                        indent += " ";
-                        firstNonSpace++;
-                    }
-                    return indent + "CALL " + callText.substring(firstNonSpace);
-                } else if (debug) {
-                    System.err.println("Argument count mismatch for " + fullName +
-                            ": expected " + info.parameters.size() + ", got " + actualArgs.size());
+                String indent = "";
+                int firstNonSpace = 0;
+                while (firstNonSpace < callText.length() && callText.charAt(firstNonSpace) == ' ') {
+                    indent += " ";
+                    firstNonSpace++;
                 }
+                return indent + "CALL " + callText.substring(firstNonSpace);
+            } else if (debug && info == null) {
+                System.err.println("No matching subprogram found for " + fullName);
             }
         }
         return callText;
     }
     
     /**
-     * Извлекает список аргументов из текста вызова.
-     * Учитывает вложенные скобки и строковые литералы.
+     * Выбирает подпрограмму, наиболее подходящую по количеству переданных аргументов.
+     * Учитывает параметры с DEFAULT (их можно не указывать).
      */
+    private SubprogramInfo findBestMatchingSubprogram(String fullName, List<String> actualArgs) {
+        String upperName = fullName.toUpperCase();
+        // Сначала пробуем получить из кеша (уже загружены все перегрузки)
+        if (!subprogramCache.containsKey(upperName)) {
+            loadAllSubprogramsForName(fullName);
+        }
+        
+        List<SubprogramInfo> overloads = new ArrayList<>();
+        for (Map.Entry<String, SubprogramInfo> entry : subprogramCache.entrySet()) {
+            if (entry.getKey().startsWith(upperName + "#") || entry.getKey().equals(upperName)) {
+                overloads.add(entry.getValue());
+            }
+        }
+        
+        if (overloads.isEmpty()) return null;
+        
+        int actualCount = actualArgs.size();
+        // Ищем точное совпадение по количеству обязательных параметров (без DEFAULT)
+        for (SubprogramInfo info : overloads) {
+            int requiredCount = 0;
+            for (Parameter p : info.parameters) {
+                if (!p.hasDefault) requiredCount++;
+            }
+            if (actualCount == requiredCount) {
+                return info;
+            }
+        }
+        // Если точного нет, ищем подпрограмму, у которой actualCount между required и total
+        for (SubprogramInfo info : overloads) {
+            int required = (int) info.parameters.stream().filter(p -> !p.hasDefault).count();
+            int total = info.parameters.size();
+            if (actualCount >= required && actualCount <= total) {
+                return info;
+            }
+        }
+        // Иначе возвращаем первую (как fallback)
+        return overloads.get(0);
+    }
+    
+    /**
+     * Загружает ВСЕ подпрограммы с данным именем (все перегрузки) и сохраняет в кеш.
+     */
+    private void loadAllSubprogramsForName(String fullName) {
+        String upperName = fullName.toUpperCase();
+        String[] parts = upperName.split("\\.");
+        if (parts.length != 2) return;
+        String packageName = parts[0];
+        String subprogramName = parts[1];
+        
+        String sql = 
+            "SELECT " +
+            "   a.PACKAGE_NAME, " +
+            "   a.OBJECT_NAME AS subprogram_name, " +
+            "   a.SUBPROGRAM_ID, " +
+            "   CASE " +
+            "       WHEN EXISTS (SELECT 1 FROM ALL_ARGUMENTS a2 " +
+            "                    WHERE a2.OBJECT_ID = a.OBJECT_ID " +
+            "                      AND a2.SUBPROGRAM_ID = a.SUBPROGRAM_ID " +
+            "                      AND a2.POSITION = 0 " +
+            "                      AND a2.ARGUMENT_NAME IS NULL) " +
+            "       THEN 'FUNCTION' " +
+            "       ELSE 'PROCEDURE' " +
+            "   END AS subprogram_type, " +
+            "   a.ARGUMENT_NAME, " +
+            "   a.POSITION, " +
+            "   a.IN_OUT, " +
+            "   a.DATA_TYPE, " +
+            "   a.DATA_LENGTH, " +
+            "   a.CHAR_LENGTH, " +
+            "   a.DATA_PRECISION, " +
+            "   a.DATA_SCALE, " +
+            "   a.DEFAULT_VALUE " +   // колонка доступна в Oracle 12c+
+            "FROM ALL_ARGUMENTS a " +
+            "WHERE a.PACKAGE_NAME = ? " +
+            "  AND a.OBJECT_NAME = ? " +
+            "  AND a.DATA_LEVEL = 0 " +
+            "ORDER BY a.SUBPROGRAM_ID, a.POSITION";
+        
+        Map<Integer, SubprogramInfo> infoMap = new HashMap<>();
+        try (Connection conn = createNewConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            pstmt.setString(1, packageName);
+            pstmt.setString(2, subprogramName);
+            
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    int subId = rs.getInt("SUBPROGRAM_ID");
+                    SubprogramInfo info = infoMap.get(subId);
+                    if (info == null) {
+                        info = new SubprogramInfo();
+                        info.packageName = rs.getString("PACKAGE_NAME");
+                        info.subprogramName = rs.getString("subprogram_name");
+                        info.subprogramId = subId;
+                        info.subprogramType = rs.getString("subprogram_type");
+                        info.parameters = new ArrayList<>();
+                        infoMap.put(subId, info);
+                    }
+                    String argName = rs.getString("ARGUMENT_NAME");
+                    int position = rs.getInt("POSITION");
+                    String defaultValue = rs.getString("DEFAULT_VALUE");
+                    
+                    if (position == 0 && "FUNCTION".equals(info.subprogramType)) {
+                        info.returnType = rs.getString("DATA_TYPE");
+                        info.returnLength = rs.getInt("DATA_LENGTH");
+                    } else if (argName != null && !argName.isEmpty()) {
+                        Parameter param = new Parameter();
+                        param.name = argName;
+                        param.position = position;
+                        param.inOut = rs.getString("IN_OUT");
+                        param.dataType = rs.getString("DATA_TYPE");
+                        param.dataLength = rs.getInt("DATA_LENGTH");
+                        param.charLength = rs.getInt("CHAR_LENGTH");
+                        param.precision = rs.getInt("DATA_PRECISION");
+                        param.scale = rs.getInt("DATA_SCALE");
+                        param.hasDefault = (defaultValue != null && !defaultValue.trim().isEmpty());
+                        info.parameters.add(param);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Ошибка при загрузке информации о подпрограмме: " + fullName);
+            if (debug) e.printStackTrace();
+            return;
+        }
+        
+        // Сохраняем каждую перегрузку в кеш с уникальным ключом
+        for (SubprogramInfo info : infoMap.values()) {
+            String key = fullName.toUpperCase() + "#" + info.subprogramId;
+            subprogramCache.put(key, info);
+            // Также сохраняем первую как основную (для обратной совместимости)
+            if (!subprogramCache.containsKey(fullName.toUpperCase())) {
+                subprogramCache.put(fullName.toUpperCase(), info);
+            }
+            if ("PROCEDURE".equals(info.subprogramType)) {
+                procedureCache.add(fullName.toUpperCase());
+            }
+        }
+    }
+    
+    private SubprogramInfo getSubprogramInfo(String fullName) {
+        String upperName = fullName.toUpperCase();
+        if (subprogramCache.containsKey(upperName)) {
+            return subprogramCache.get(upperName);
+        }
+        loadAllSubprogramsForName(fullName);
+        return subprogramCache.get(upperName);
+    }
+    
+    /**
+     * Создаёт НОВОЕ соединение с БД (решает проблему закрытых соединений).
+     */
+    private Connection createNewConnection() throws SQLException {
+        OracleDataSource ods = new OracleDataSource();
+        ods.setURL(DB_URL);
+        ods.setUser(DB_USER);
+        ods.setPassword(DB_PASSWORD);
+        return ods.getConnection();
+    }
+    
+    // ---------- Вспомогательные методы для извлечения аргументов (без изменений) ----------
     private List<String> extractArgumentList(String callText) {
         List<String> args = new ArrayList<>();
         int startParams = callText.indexOf('(');
         if (startParams == -1) return args;
-        
         int endParams = findMatchingParen(callText, startParams);
         if (endParams == -1) return args;
-        
         String paramsStr = callText.substring(startParams + 1, endParams).trim();
         if (paramsStr.isEmpty()) return args;
         
-        // Разбиваем по запятым, не учитывая запятые внутри вложенных скобок и строк
         StringBuilder current = new StringBuilder();
         int parenLevel = 0;
         boolean inString = false;
@@ -183,7 +346,6 @@ public class ProcedureCall implements Issue {
                 continue;
             }
             if (inString && c == stringDelimiter) {
-                // Проверяем, не экранирован ли
                 if (i > 0 && paramsStr.charAt(i-1) != '\\') {
                     inString = false;
                 }
@@ -220,108 +382,7 @@ public class ProcedureCall implements Issue {
         return -1;
     }
     
-    private SubprogramInfo getSubprogramInfo(String fullName) {
-        String upperName = fullName.toUpperCase();
-        if (subprogramCache.containsKey(upperName)) {
-            return subprogramCache.get(upperName);
-        }
-        
-        String[] parts = upperName.split("\\.");
-        if (parts.length != 2) return null;
-        String packageName = parts[0];
-        String subprogramName = parts[1];
-        
-        // Исправленный SQL запрос
-        String sql = 
-            "SELECT " +
-            "   a.PACKAGE_NAME, " +
-            "   a.OBJECT_NAME AS subprogram_name, " +
-            "   a.SUBPROGRAM_ID, " +
-            "   CASE " +
-            "       WHEN EXISTS (SELECT 1 FROM ALL_ARGUMENTS a2 " +
-            "                    WHERE a2.OBJECT_ID = a.OBJECT_ID " +
-            "                      AND a2.SUBPROGRAM_ID = a.SUBPROGRAM_ID " +
-            "                      AND a2.POSITION = 0 " +
-            "                      AND a2.ARGUMENT_NAME IS NULL) " +
-            "       THEN 'FUNCTION' " +
-            "       ELSE 'PROCEDURE' " +
-            "   END AS subprogram_type, " +
-            "   a.ARGUMENT_NAME, " +
-            "   a.POSITION, " +
-            "   a.IN_OUT, " +
-            "   a.DATA_TYPE, " +
-            "   a.DATA_LENGTH, " +
-            "   a.CHAR_LENGTH, " +
-            "   a.DATA_PRECISION, " +
-            "   a.DATA_SCALE " +
-            "FROM ALL_ARGUMENTS a " +
-            "WHERE a.PACKAGE_NAME = ? " +
-            "  AND a.OBJECT_NAME = ? " +
-            "  AND a.DATA_LEVEL = 0 " +
-            "ORDER BY a.SUBPROGRAM_ID, a.POSITION";
-        
-        Map<Integer, SubprogramInfo> infoMap = new HashMap<>();
-        try (Connection conn = OracleConnection.getInstance().getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
-            pstmt.setString(1, packageName);
-            pstmt.setString(2, subprogramName);
-            
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    int subId = rs.getInt("SUBPROGRAM_ID");
-                    SubprogramInfo info = infoMap.get(subId);
-                    if (info == null) {
-                        info = new SubprogramInfo();
-                        info.packageName = rs.getString("PACKAGE_NAME");
-                        info.subprogramName = rs.getString("subprogram_name");
-                        info.subprogramId = subId;
-                        info.subprogramType = rs.getString("subprogram_type");
-                        info.parameters = new ArrayList<>();
-                        infoMap.put(subId, info);
-                    }
-                    String argName = rs.getString("ARGUMENT_NAME");
-                    int position = rs.getInt("POSITION");
-                    if (position == 0 && "FUNCTION".equals(info.subprogramType)) {
-                        info.returnType = rs.getString("DATA_TYPE");
-                        info.returnLength = rs.getInt("DATA_LENGTH");
-                    } else if (argName != null) {
-                        Parameter param = new Parameter();
-                        param.name = argName;
-                        param.position = position;
-                        param.inOut = rs.getString("IN_OUT");
-                        param.dataType = rs.getString("DATA_TYPE");
-                        param.dataLength = rs.getInt("DATA_LENGTH");
-                        param.charLength = rs.getInt("CHAR_LENGTH");
-                        param.precision = rs.getInt("DATA_PRECISION");
-                        param.scale = rs.getInt("DATA_SCALE");
-                        info.parameters.add(param);
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("Ошибка при получении информации о подпрограмме: " + fullName);
-            e.printStackTrace();
-            return null;
-        }
-        
-        // В пакете может быть несколько перегруженных подпрограмм (разные SUBPROGRAM_ID)
-        // Для простоты берём первую, либо можно добавить логику выбора по количеству аргументов
-        SubprogramInfo result = null;
-        for (SubprogramInfo info : infoMap.values()) {
-            if (result == null) result = info;
-            // Можно реализовать выбор по сигнатуре, но для большинства случаев достаточно первого
-        }
-        if (result != null) {
-            subprogramCache.put(upperName, result);
-            if ("PROCEDURE".equals(result.subprogramType)) {
-                procedureCache.add(upperName);
-            }
-        }
-        return result;
-    }
-    
-    // Вспомогательные классы
+    // ---------- Внутренние классы ----------
     public static class SubprogramInfo {
         public String packageName;
         public String subprogramName;
@@ -346,10 +407,11 @@ public class ProcedureCall implements Issue {
         public int charLength;
         public int precision;
         public int scale;
+        public boolean hasDefault;
         
         @Override
         public String toString() {
-            return String.format("%s %s %s", inOut, name, dataType);
+            return String.format("%s %s %s%s", inOut, name, dataType, hasDefault ? " DEFAULT" : "");
         }
     }
 }

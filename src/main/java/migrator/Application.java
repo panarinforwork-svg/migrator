@@ -20,10 +20,10 @@ public class Application {
         
         Searcher search = new Searcher(params);
         // для отладки
-        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\experiments\\migration2\\schema\\packages\\common_pkg\\get_dean_by_fac_package.sql");
+//        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\experiments\\migration2\\schema\\packages\\ac_proc_sched_pkg\\auto_fill_by_curr_package.sql");
 //        LOGGER.info("Checking file: {}", filePath.getFileName());
-        search.checkFile(filePath);
-//        search.searchScripts(ScriptType.PACKAGE);
+//        search.checkFile(filePath);
+        search.searchScripts(ScriptType.PACKAGE);
         
         LOGGER.info("Application finished");
     }
