@@ -20,8 +20,8 @@ public class Application {
         
         Searcher search = new Searcher(params);
         // для отладки
-        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\experiments\\migration2\\schema\\packages\\ac_proc_sched_pkg\\auto_fill_all_currs_package.sql");
-//        LOGGER.info("Checking file: {}", filePath.getFileName());
+        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\migration\\schema\\packages\\assets_pkg\\set_facility_package.sql");
+        LOGGER.info("Checking file: {}", filePath.getFileName());
         search.checkFile(filePath);
 //        search.searchScripts(ScriptType.PACKAGE);
         

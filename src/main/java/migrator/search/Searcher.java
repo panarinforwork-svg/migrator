@@ -10,16 +10,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import migrator.Application;
+import migrator.issues.CallReorder;
 import migrator.issues.DbmsLoad;
+import migrator.issues.DbmsSession;
 import migrator.issues.FixRecursiveCTE;
 import migrator.issues.InitializationBlock;
 import migrator.issues.Issue;
 import migrator.issues.MergeInto;
+import migrator.issues.ParameterReorder;
 import migrator.issues.ProcedureCall;
 import migrator.issues.UtlHttp;
 import migrator.params.Parametrs;
@@ -35,8 +38,13 @@ public class Searcher {
 			new UtlHttp(),
 			new MergeInto(),
 			new FixRecursiveCTE(),
-//			new ProcedureCall()
+			new ParameterReorder(),
+			new DbmsSession(),
 			new ProcedureCall()
+			);
+	
+	private List<Issue> postApplyIssues = List.of(
+			new CallReorder()
 			);
 	
 	private Map<Class<?>, List<String>> filesByIssues = new HashMap<>();
@@ -48,6 +56,7 @@ public class Searcher {
 	public Searcher(Parametrs params) {
 		projectPath = params.path;
 		issues.stream().forEach(x -> filesByIssues.put(x.getClass(), new ArrayList()));
+		postApplyIssues.stream().forEach(x -> filesByIssues.put(x.getClass(), new ArrayList()));
 	}
 	
 	public void searchScripts(ScriptType type) {
@@ -65,33 +74,52 @@ public class Searcher {
 	    List<Path> paths = FilesUtils.searchPackages(projectPath);
 	    ExecutorService executor = Executors.newFixedThreadPool(5);
 	    
-	    // Отправляем задачи
-	    paths.forEach(path -> executor.submit(() -> checkFile(path)));
-	    
+	    // Первый проход (issues)
+	    for (Path path : paths) {
+	        executor.submit(() -> checkFileAndWrite(path, issues));
+	    }
 	    executor.shutdown();
+	    try {
+	        executor.awaitTermination(1, TimeUnit.HOURS);
+	    } catch (InterruptedException e) {
+	        Thread.currentThread().interrupt();
+	    }
 	    
-	    LOGGER.info("All {} files processed", paths.size());
+	    // Второй проход (postApplyIssues) - читаем уже изменённые файлы
+	    executor = Executors.newFixedThreadPool(5);
+	    for (Path path : paths) {
+	        executor.submit(() -> checkFileAndWrite(path, postApplyIssues));
+	    }
+	    executor.shutdown();
+	    try {
+	        executor.awaitTermination(1, TimeUnit.HOURS);
+	    } catch (InterruptedException e) {
+	        Thread.currentThread().interrupt();
+	    }
 	}
-    
-    public String checkFile(Path path) {
-        try {
-            String content = Files.readString(path, StandardCharsets.UTF_8);
-            String result = content;
-            for (Issue isu : issues) {
-            	String tmp = isu.correct(result);
-            	if (!tmp.equals(result)) {
-            		filesByIssues.get(isu.getClass()).add(path.toString());
-            		result = tmp;
-            	}
-            }
-            if (!result.equals(content)) {
-            	LOGGER.info(path.toString().concat(" needs to change"));
-            	Files.write( path, result.getBytes());
-            }
-            return result;
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
+
+	private void checkFileAndWrite(Path path, List<Issue> issuesToApply) {
+	    try {
+	        String content = Files.readString(path, StandardCharsets.UTF_8);
+	        String result = content;
+	        for (Issue isu : issuesToApply) {
+	            String tmp = isu.correct(result);
+	            if (!tmp.equals(result)) {
+	                filesByIssues.get(isu.getClass()).add(path.toString());
+	                result = tmp;
+	            }
+	        }
+	        if (!result.equals(content)) {
+	            LOGGER.info(path.toString().concat(" needs to change"));
+	            Files.writeString(path, result, StandardCharsets.UTF_8);
+	        }
+	    } catch (IOException e) {
+	        e.printStackTrace();
+	    }
+	}
+
+	public void checkFile(Path path) {
+	    checkFileAndWrite(path, issues);
+//	    checkFileAndWrite(path, postApplyIssues);
+	}
 }
