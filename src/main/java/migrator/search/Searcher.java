@@ -44,7 +44,7 @@ public class Searcher {
 			);
 	
 	private List<Issue> postApplyIssues = List.of(
-			new CallReorder()
+//			new CallReorder()
 			);
 	
 	private Map<Class<?>, List<String>> filesByIssues = new HashMap<>();

@@ -40,13 +40,13 @@ public class ParameterReorder implements Issue {
 
         while (startMatcher.find()) {
             result.append(sql, lastEnd, startMatcher.start());
-            String prefix = startMatcher.group(1);        // заканчивается на '('
+            String prefix = startMatcher.group(1);      // "CREATE ... PROCEDURE name ("
             String fullName = startMatcher.group(2);
 
-            int paramsStart = startMatcher.end() - 1;     // позиция '('
+            int paramsStart = startMatcher.end() - 1;   // позиция '('
             int paramsEnd = findMatchingParen(sql, paramsStart);
             if (paramsEnd == -1) {
-                result.append(prefix + "(");
+                result.append(prefix);
                 lastEnd = startMatcher.end();
                 continue;
             }
@@ -54,15 +54,23 @@ public class ParameterReorder implements Issue {
             String paramsRaw = sql.substring(paramsStart + 1, paramsEnd);
             List<Param> originalParams = parseParameters(paramsRaw);
             List<Param> reorderedParams = reorderParameters(originalParams);
-            String newParams = formatParameters(reorderedParams);
 
             changedSignatures.put(fullName.toLowerCase(),
                 new MethodSignature(originalParams, reorderedParams, isFunction));
 
-            int headerEnd = findHeaderEnd(sql, paramsEnd + 1);
-            String suffix = sql.substring(paramsEnd, headerEnd); // начинается с ')'
+            // Если порядок не изменился – оставляем как было
+            if (isSameOrder(originalParams, reorderedParams)) {
+                int headerEnd = findHeaderEnd(sql, paramsEnd + 1);
+                result.append(sql, startMatcher.start(), headerEnd);
+                lastEnd = headerEnd;
+                continue;
+            }
 
-            // Исправлено: не удаляем '('
+            // Порядок изменился – пересобираем параметры
+            String newParams = formatParameters(reorderedParams);
+            int headerEnd = findHeaderEnd(sql, paramsEnd + 1);
+            String suffix = sql.substring(paramsEnd, headerEnd); // содержит ')'
+            // prefix уже заканчивается на '(', не удаляем её
             String replacement = prefix + newParams + suffix;
             result.append(replacement);
             lastEnd = headerEnd;
