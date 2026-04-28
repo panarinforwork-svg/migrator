@@ -18,6 +18,7 @@ import org.apache.logging.log4j.Logger;
 import migrator.issues.CallReorder;
 import migrator.issues.DbmsLoad;
 import migrator.issues.DbmsSession;
+import migrator.issues.FixInsertRecordSyntaxAdvanced;
 import migrator.issues.FixRecursiveCTE;
 import migrator.issues.InitializationBlock;
 import migrator.issues.Issue;
@@ -26,6 +27,7 @@ import migrator.issues.ParameterReorder;
 import migrator.issues.ProcedureCall;
 import migrator.issues.RemoveInsertAlias;
 import migrator.issues.ReplaceOpenCommentWithComment;
+import migrator.issues.SubstrNamedParams;
 import migrator.issues.UtlHttp;
 import migrator.params.Parametrs;
 import utils.FilesUtils;
@@ -36,6 +38,7 @@ public class Searcher {
 	
 	private List<Issue> issues = List.of(
 			new InitializationBlock(), 
+//			new SubstrNamedParams(),
 			new DbmsLoad(), 
 			new UtlHttp(),
 			new MergeInto(),
@@ -44,7 +47,8 @@ public class Searcher {
 			new DbmsSession(),
 			new ProcedureCall(),
 			new RemoveInsertAlias(),
-			new ReplaceOpenCommentWithComment()
+			new ReplaceOpenCommentWithComment(),
+			new FixInsertRecordSyntaxAdvanced()
 			);
 	
 	private List<Issue> postApplyIssues = List.of(

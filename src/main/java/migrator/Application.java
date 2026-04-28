@@ -20,10 +20,10 @@ public class Application {
         
         Searcher search = new Searcher(params);
         // для отладки
-        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\experiments\\migration2\\schema\\packages\\chair_charge_pkg\\get_chair_charge_usp_package.sql");
+//        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\experiments\\migration2\\schema\\packages\\curriculum_charge_pkg\\copy_semester_charge_package.sql");
 //        LOGGER.info("Checking file: {}", filePath.getFileName());
-        search.checkFile(filePath);
-//        search.searchScripts(ScriptType.PACKAGE);
+//        search.checkFile(filePath);
+        search.searchScripts(ScriptType.PACKAGE);
         
         LOGGER.info("Application finished");
     }
