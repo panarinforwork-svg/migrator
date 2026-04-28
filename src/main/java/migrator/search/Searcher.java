@@ -24,6 +24,8 @@ import migrator.issues.Issue;
 import migrator.issues.MergeInto;
 import migrator.issues.ParameterReorder;
 import migrator.issues.ProcedureCall;
+import migrator.issues.RemoveInsertAlias;
+import migrator.issues.ReplaceOpenCommentWithComment;
 import migrator.issues.UtlHttp;
 import migrator.params.Parametrs;
 import utils.FilesUtils;
@@ -40,7 +42,9 @@ public class Searcher {
 			new FixRecursiveCTE(),
 			new ParameterReorder(),
 			new DbmsSession(),
-			new ProcedureCall()
+			new ProcedureCall(),
+			new RemoveInsertAlias(),
+			new ReplaceOpenCommentWithComment()
 			);
 	
 	private List<Issue> postApplyIssues = List.of(
