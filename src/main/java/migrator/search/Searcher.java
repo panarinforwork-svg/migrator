@@ -22,6 +22,7 @@ import migrator.issues.FixInsertRecordSyntaxAdvanced;
 import migrator.issues.FixRecursiveCTE;
 import migrator.issues.InitializationBlock;
 import migrator.issues.Issue;
+import migrator.issues.KeepClause;
 import migrator.issues.MergeInto;
 import migrator.issues.ParameterReorder;
 import migrator.issues.ProcedureCall;
@@ -48,7 +49,8 @@ public class Searcher {
 			new ProcedureCall(),
 			new RemoveInsertAlias(),
 			new ReplaceOpenCommentWithComment(),
-			new FixInsertRecordSyntaxAdvanced()
+			new FixInsertRecordSyntaxAdvanced(),
+			new KeepClause()
 			);
 	
 	private List<Issue> postApplyIssues = List.of(
