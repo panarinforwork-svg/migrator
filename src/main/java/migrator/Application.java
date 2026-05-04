@@ -20,7 +20,7 @@ public class Application {
         
         Searcher search = new Searcher(params);
         // для отладки
-        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\experiments\\migration2\\schema\\packages\\curriculum_checks_pkg\\for_check_zo_is_like_o_package.sql");
+//        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\experiments\\migration2\\schema\\packages\\ac_proc_sched_pkg\\set_curr_rights_to_tmp_package.sql");
 //        LOGGER.info("Checking file: {}", filePath.getFileName());
 //        search.checkFile(filePath);
         search.searchScripts(ScriptType.PACKAGE);

@@ -4,89 +4,126 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class KeepClause implements Issue {
     
-    // Паттерн для поиска KEEP с учетом возможного INTO между SELECT и функцией
-    private static final Pattern KEEP_PATTERN = Pattern.compile(
-        "(\\w+)\\s*\\(\\s*([a-zA-Z_][a-zA-Z0-9_$#]*(?:\\.[a-zA-Z_][a-zA-Z0-9_$#]*)?)\\s*\\)\\s+keep\\s*\\(\\s*dense_rank\\s+(first|last)\\s+order\\s+by\\s+([a-zA-Z_][a-zA-Z0-9_$#]*(?:\\.[a-zA-Z_][a-zA-Z0-9_$#]*)?)\\s*(asc|desc)?\\s*(?:nulls\\s+(first|last))?\\s*\\)",
+    // Паттерн для KEEP в SELECT (без INTO) - в виде "max(...) keep(...) AS alias"
+    private static final Pattern KEEP_IN_SELECT_PATTERN = Pattern.compile(
+        "(max|min)\\s*\\(\\s*([a-zA-Z_][a-zA-Z0-9_$#]*(?:\\.[a-zA-Z_][a-zA-Z0-9_$#]*)?)\\s*\\)\\s+keep\\s*\\(\\s*dense_rank\\s+(first|last)\\s+order\\s+by\\s+(.+?)\\s*\\)\\s+AS\\s+(\\w+)",
         Pattern.CASE_INSENSITIVE | Pattern.DOTALL
     );
     
-    // Паттерн для поиска SELECT ... INTO ... KEEP
-    private static final Pattern SELECT_INTO_KEEP_PATTERN = Pattern.compile(
-        "select\\s+into\\s+strict\\s+(\\w+)\\s+(\\w+)\\s*\\(\\s*([a-zA-Z_][a-zA-Z0-9_$#]*(?:\\.[a-zA-Z_][a-zA-Z0-9_$#]*)?)\\s*\\)\\s+keep\\s*\\(\\s*dense_rank\\s+(first|last)\\s+order\\s+by\\s+([a-zA-Z_][a-zA-Z0-9_$#]*(?:\\.[a-zA-Z_][a-zA-Z0-9_$#]*)?)\\s*(asc|desc)?\\s*(?:nulls\\s+(first|last))?\\s*\\)",
+    // Паттерн для KEEP без AS
+    private static final Pattern KEEP_PLAIN_PATTERN = Pattern.compile(
+        "(max|min)\\s*\\(\\s*([a-zA-Z_][a-zA-Z0-9_$#]*(?:\\.[a-zA-Z_][a-zA-Z0-9_$#]*)?)\\s*\\)\\s+keep\\s*\\(\\s*dense_rank\\s+(first|last)\\s+order\\s+by\\s+(.+?)\\s*\\)",
+        Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+    );
+    
+    // Паттерн для SELECT ... INTO ... KEEP
+    private static final Pattern KEEP_SELECT_INTO_PATTERN = Pattern.compile(
+        "select\\s+(max|min)\\s*\\(\\s*([a-zA-Z_][a-zA-Z0-9_$#]*(?:\\.[a-zA-Z_][a-zA-Z0-9_$#]*)?)\\s*\\)\\s+keep\\s*\\(\\s*dense_rank\\s+(first|last)\\s+order\\s+by\\s+(.+?)\\s*\\)\\s+into\\s+strict\\s+(\\w+)\\s+from\\s+",
         Pattern.CASE_INSENSITIVE | Pattern.DOTALL
     );
     
     @Override
     public String correct(String content) {
         if (content == null || content.isBlank()) return content;
-        return fixKeepClauses(content);
-    }
-    
-    private String fixKeepClauses(String content) {
-        // Сначала обрабатываем многострочные конструкции
+        
         String result = content;
         
-        // Обработка SELECT ... INTO ... KEEP
-        Matcher intoMatcher = SELECT_INTO_KEEP_PATTERN.matcher(result);
-        while (intoMatcher.find()) {
-            String targetVar = intoMatcher.group(1);
-            String aggFunction = intoMatcher.group(2);
-            String column = intoMatcher.group(3);
-            String rankOrder = intoMatcher.group(4);
-            String orderColumn = intoMatcher.group(5);
-            String orderDir = intoMatcher.group(6);
-            
-            String replacement = buildReplacement(aggFunction, column, orderColumn, rankOrder, orderDir);
-            String fullMatch = intoMatcher.group(0);
-            String newSelect = "select " + replacement + " into strict " + targetVar;
-            result = result.replace(fullMatch, newSelect);
-        }
+        // 1. Обработка KEEP в SELECT с AS
+        result = fixKeepInSelect(result);
         
-        // Обработка обычных KEEP (без INTO)
-        Matcher keepMatcher = KEEP_PATTERN.matcher(result);
-        while (keepMatcher.find()) {
-            String aggFunction = keepMatcher.group(1);
-            String column = keepMatcher.group(2);
-            String rankOrder = keepMatcher.group(3);
-            String orderColumn = keepMatcher.group(4);
-            String orderDir = keepMatcher.group(5);
-            
-            String replacement = buildReplacement(aggFunction, column, orderColumn, rankOrder, orderDir);
-            result = result.replace(keepMatcher.group(0), replacement);
-        }
+        // 2. Обработка KEEP в SELECT без AS
+        result = fixKeepPlain(result);
+        
+        // 3. Обработка SELECT INTO KEEP
+        result = fixKeepSelectInto(result);
         
         return result;
     }
     
-    private String buildReplacement(String aggFunction, String column, String orderColumn, String rankOrder, String orderDir) {
-        String aggLower = aggFunction.toLowerCase();
-        String sortOrder;
+    private String fixKeepInSelect(String content) {
+        Matcher matcher = KEEP_IN_SELECT_PATTERN.matcher(content);
+        StringBuffer sb = new StringBuffer();
         
-        if ("last".equalsIgnoreCase(rankOrder)) {
-            if (orderDir != null && "desc".equalsIgnoreCase(orderDir)) {
-                sortOrder = orderColumn + " " + orderDir + ", " + column + " desc";
-            } else {
-                sortOrder = orderColumn + " desc, " + column + " desc";
-            }
-        } else { // first
-            if (orderDir != null && "asc".equalsIgnoreCase(orderDir)) {
-                sortOrder = orderColumn + " " + orderDir + ", " + column + " asc";
-            } else {
-                sortOrder = orderColumn + " asc, " + column + " asc";
-            }
+        while (matcher.find()) {
+            String aggFunction = matcher.group(1);
+            String column = matcher.group(2);
+            String rankOrder = matcher.group(3);
+            String orderByExpr = matcher.group(4);
+            String alias = matcher.group(5);
+            
+            String direction = "last".equalsIgnoreCase(rankOrder) ? "DESC" : "ASC";
+            String cleanColumn = column.contains(".") ? column.substring(column.lastIndexOf(".") + 1) : column;
+            
+            // Пытаемся определить таблицу из колонки (префикс)
+            String tableAlias = column.contains(".") ? column.substring(0, column.indexOf(".")) : "t";
+            
+            String replacement = String.format(
+                "(SELECT %s FROM %s ORDER BY (%s) %s, %s %s LIMIT 1) AS %s",
+                cleanColumn, tableAlias, orderByExpr, direction, cleanColumn, direction, alias
+            );
+            
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
         }
+        matcher.appendTail(sb);
         
-        // Для простых случаев max/min
-        if ("max".equals(aggLower) || "min".equals(aggLower)) {
-            return String.format("(select %s from curriculum c order by %s limit 1)", column, sortOrder);
+        return sb.toString();
+    }
+    
+    private String fixKeepPlain(String content) {
+        Matcher matcher = KEEP_PLAIN_PATTERN.matcher(content);
+        StringBuffer sb = new StringBuffer();
+        
+        while (matcher.find()) {
+            String aggFunction = matcher.group(1);
+            String column = matcher.group(2);
+            String rankOrder = matcher.group(3);
+            String orderByExpr = matcher.group(4);
+            
+            String direction = "last".equalsIgnoreCase(rankOrder) ? "DESC" : "ASC";
+            String cleanColumn = column.contains(".") ? column.substring(column.lastIndexOf(".") + 1) : column;
+            String tableAlias = column.contains(".") ? column.substring(0, column.indexOf(".")) : "t";
+            
+            String replacement = String.format(
+                "(SELECT %s FROM %s ORDER BY (%s) %s, %s %s LIMIT 1)",
+                cleanColumn, tableAlias, orderByExpr, direction, cleanColumn, direction
+            );
+            
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
         }
+        matcher.appendTail(sb);
         
-        // Для sum/avg/count нужно больше контекста
-        // Пока возвращаем подзапрос
-        return String.format("(select %s(%s) from curriculum c where %s = (select %s from curriculum c2 order by %s limit 1))",
-            aggFunction.toUpperCase(), column, orderColumn, orderColumn, sortOrder);
+        return sb.toString();
+    }
+    
+    private String fixKeepSelectInto(String content) {
+        Matcher matcher = KEEP_SELECT_INTO_PATTERN.matcher(content);
+        StringBuffer sb = new StringBuffer();
+        
+        while (matcher.find()) {
+            String aggFunction = matcher.group(1);
+            String column = matcher.group(2);
+            String rankOrder = matcher.group(3);
+            String orderByExpr = matcher.group(4);
+            String targetVar = matcher.group(5);
+            
+            String direction = "last".equalsIgnoreCase(rankOrder) ? "DESC" : "ASC";
+            String cleanColumn = column.contains(".") ? column.substring(column.lastIndexOf(".") + 1) : column;
+            String tableAlias = column.contains(".") ? column.substring(0, column.indexOf(".")) : "t";
+            
+            String replacement = String.format(
+                "SELECT (SELECT %s FROM %s ORDER BY (%s) %s, %s %s LIMIT 1) INTO STRICT %s FROM",
+                cleanColumn, tableAlias, orderByExpr, direction, cleanColumn, direction, targetVar
+            );
+            
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(sb);
+        
+        return sb.toString();
     }
 }
