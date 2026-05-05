@@ -25,6 +25,7 @@ import migrator.issues.ConnectByLevel;
 import migrator.issues.DblinkToFdw;
 import migrator.issues.DbmsLoad;
 import migrator.issues.DbmsSession;
+import migrator.issues.FinalArrayFix;
 import migrator.issues.FixInsertRecordSyntaxAdvanced;
 import migrator.issues.FixRecursiveCTE;
 import migrator.issues.InitializationBlock;
@@ -62,6 +63,7 @@ public class Searcher {
 			new KeepClause(),
 //			new LevelClause(),
 			new DblinkToFdw(),
+			new FinalArrayFix(),
 			new ConnectByLevel()
 			);
 	
