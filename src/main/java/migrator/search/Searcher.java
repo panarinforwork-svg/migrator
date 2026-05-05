@@ -66,7 +66,8 @@ public class Searcher {
 			);
 	
 	private List<Issue> postApplyIssues = List.of(
-			new CallReorder()
+			new CallReorder(),
+			new ProcedureCall()
 			);
 	
 	private Map<Class<?>, List<String>> filesByIssues = new HashMap<>();

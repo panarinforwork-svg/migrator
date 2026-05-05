@@ -25,8 +25,10 @@ public class DblinkAnalyzer {
     }
     
     public void analyzeContent(String content) {
+        // Поддерживаем dblink с точками в имени (например, dec7.virt)
+        // Паттерн: schema.table@dblink (dblink может содержать буквы, цифры, точки и подчеркивания)
         Pattern pattern = Pattern.compile(
-            "([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\.\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*@\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+            "([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\.\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*@\\s*([a-zA-Z0-9_.]+)",
             Pattern.CASE_INSENSITIVE
         );
         
@@ -67,17 +69,20 @@ public class DblinkAnalyzer {
         Set<String> schemas = dblinkSchemas.get(dblink);
         Map<String, Set<String>> schemasTables = dblinkTables.get(dblink);
         
+        // Преобразуем dblink с точками в безопасное имя для FDW (заменяем точки на подчеркивания)
+        String safeDblink = dblink.replace('.', '_');
+        
         sb.append("-- =====================================================\n");
-        sb.append("-- FDW Setup for ").append(dblink).append("\n");
+        sb.append("-- FDW Setup for ").append(dblink).append(" (safe name: ").append(safeDblink).append(")\n");
         sb.append("-- =====================================================\n\n");
         
         // Очистка всех схем для этого dblink
         sb.append("-- Очистка\n");
         for (String schema : schemas) {
-            String localSchema = dblink + "_" + schema;
+            String localSchema = safeDblink + "_" + schema;
             sb.append("DROP SCHEMA IF EXISTS ").append(localSchema).append(" CASCADE;\n");
         }
-        sb.append("DROP SERVER IF EXISTS ").append(dblink).append("_server CASCADE;\n\n");
+        sb.append("DROP SERVER IF EXISTS ").append(safeDblink).append("_server CASCADE;\n\n");
         
         // Создание
         sb.append("-- Создание\n");
@@ -86,14 +91,14 @@ public class DblinkAnalyzer {
         // Создаем все схемы
         sb.append("-- Схемы\n");
         for (String schema : schemas) {
-            String localSchema = dblink + "_" + schema;
+            String localSchema = safeDblink + "_" + schema;
             sb.append("CREATE SCHEMA IF NOT EXISTS ").append(localSchema).append(";\n");
         }
         sb.append("\n");
         
         // Сервер (один для всех схем)
         sb.append("-- Сервер\n");
-        sb.append("CREATE SERVER ").append(dblink).append("_server\n");
+        sb.append("CREATE SERVER ").append(safeDblink).append("_server\n");
         sb.append("    FOREIGN DATA WRAPPER postgres_fdw\n");
         sb.append("    OPTIONS (\n");
         sb.append("        host 'localhost',\n");
@@ -103,12 +108,12 @@ public class DblinkAnalyzer {
         
         // Доступ для всех
         sb.append("-- Доступ для всех\n");
-        sb.append("GRANT USAGE ON FOREIGN SERVER ").append(dblink).append("_server TO PUBLIC;\n\n");
+        sb.append("GRANT USAGE ON FOREIGN SERVER ").append(safeDblink).append("_server TO PUBLIC;\n\n");
         
         // User mapping для всех (один для всех схем)
         sb.append("-- User mapping для всех\n");
         sb.append("CREATE USER MAPPING FOR PUBLIC\n");
-        sb.append("    SERVER ").append(dblink).append("_server\n");
+        sb.append("    SERVER ").append(safeDblink).append("_server\n");
         sb.append("    OPTIONS (\n");
         sb.append("        user 'postgres',\n");
         sb.append("        password_required 'false'\n");
@@ -117,16 +122,16 @@ public class DblinkAnalyzer {
         // Импорт таблиц для каждой схемы
         sb.append("-- Импорт таблиц\n");
         for (String schema : schemas) {
-            String localSchema = dblink + "_" + schema;
+            String localSchema = safeDblink + "_" + schema;
             sb.append("IMPORT FOREIGN SCHEMA ").append(schema).append("\n");
-            sb.append("    FROM SERVER ").append(dblink).append("_server\n");
+            sb.append("    FROM SERVER ").append(safeDblink).append("_server\n");
             sb.append("    INTO ").append(localSchema).append(";\n\n");
         }
         
         // Права для всех на каждую схему
         sb.append("-- Права для всех\n");
         for (String schema : schemas) {
-            String localSchema = dblink + "_" + schema;
+            String localSchema = safeDblink + "_" + schema;
             sb.append("GRANT USAGE ON SCHEMA ").append(localSchema).append(" TO PUBLIC;\n");
             sb.append("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA ").append(localSchema).append(" TO PUBLIC;\n");
         }
@@ -137,13 +142,14 @@ public class DblinkAnalyzer {
         for (Map.Entry<String, Set<String>> entry : schemasTables.entrySet()) {
             String schema = entry.getKey();
             Set<String> tables = entry.getValue();
-            String localSchema = dblink + "_" + schema;
+            String localSchema = safeDblink + "_" + schema;
             if (tables != null && !tables.isEmpty()) {
                 String firstTable = tables.iterator().next();
                 sb.append("SELECT COUNT(*) AS ").append(schema).append("_count FROM ").append(localSchema).append(".").append(firstTable).append(";\n");
             }
         }
         
+        sb.append("\n");
         return sb.toString();
     }
     
@@ -163,7 +169,7 @@ public class DblinkAnalyzer {
         sb.append("    c.relname AS table_name\n");
         sb.append("FROM pg_class c\n");
         sb.append("JOIN pg_namespace n ON c.relnamespace = n.oid\n");
-        sb.append("WHERE n.nspname LIKE 'dec7_%'\n");
+        sb.append("WHERE n.nspname LIKE '%\\_%'\n");
         sb.append("  AND c.relkind = 'f'\n");
         sb.append("ORDER BY n.nspname, c.relname;\n");
         
@@ -175,7 +181,8 @@ public class DblinkAnalyzer {
         System.out.println("Found " + foundDblinks.size() + " dblink(s):\n");
         
         for (String dblink : foundDblinks) {
-            System.out.println("DBLink: " + dblink);
+            String safeDblink = dblink.replace('.', '_');
+            System.out.println("DBLink: " + dblink + " (safe: " + safeDblink + ")");
             Map<String, Set<String>> schemasTables = dblinkTables.get(dblink);
             
             if (schemasTables != null) {
@@ -183,7 +190,7 @@ public class DblinkAnalyzer {
                     String schema = entry.getKey();
                     Set<String> tables = entry.getValue();
                     System.out.println("  Remote schema: " + schema);
-                    System.out.println("    Local schema: " + dblink + "_" + schema);
+                    System.out.println("    Local schema: " + safeDblink + "_" + schema);
                     System.out.println("    Tables: " + String.join(", ", tables));
                 }
             }
