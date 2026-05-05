@@ -29,6 +29,7 @@ import migrator.issues.FinalArrayFix;
 import migrator.issues.FixInsertRecordSyntaxAdvanced;
 import migrator.issues.FixRecursiveCTE;
 import migrator.issues.InitializationBlock;
+import migrator.issues.InsertRecordIssue;
 import migrator.issues.Issue;
 import migrator.issues.KeepClause;
 import migrator.issues.LevelClause;
@@ -61,6 +62,7 @@ public class Searcher {
 			new ReplaceOpenCommentWithComment(),
 			new FixInsertRecordSyntaxAdvanced(),
 			new KeepClause(),
+			new InsertRecordIssue(),
 //			new LevelClause(),
 			new DblinkToFdw(),
 			new FinalArrayFix(),

@@ -20,7 +20,7 @@ public class Application {
         
         Searcher search = new Searcher(params);
         // для отладки
-//        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\experiments\\migration2\\schema\\packages\\curriculum_checks_pkg\\m_check_curr_attrs_package.sql");
+//        Path filePath = Path.of("C:\\Users\\panarin\\Desktop\\svoe\\data\\experiments\\migration2\\schema\\packages\\comp_model_pkg\\copy_model_package.sql");
 //        LOGGER.info("Checking file: {}", filePath.getFileName());
 //        search.checkFile(filePath);
         search.searchScripts(ScriptType.PACKAGE);
