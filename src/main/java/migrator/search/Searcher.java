@@ -49,7 +49,8 @@ public class Searcher {
 	private final DblinkAnalyzer dblinkAnalyz = new DblinkAnalyzer();
 	
 	private List<Issue> issues = List.of(
-			new InitializationBlock(), 
+			new InitializationBlock(),
+			new DblinkToFdw(),
 //			new SubstrNamedParams(),
 			new DbmsLoad(), 
 			new UtlHttp(),
@@ -63,8 +64,7 @@ public class Searcher {
 			new FixInsertRecordSyntaxAdvanced(),
 			new KeepClause(),
 			new InsertRecordIssue(),
-//			new LevelClause(),
-			new DblinkToFdw(),
+			new LevelClause(),
 			new FinalArrayFix(),
 			new ConnectByLevel()
 			);
