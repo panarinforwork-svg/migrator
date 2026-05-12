@@ -1,4 +1,4 @@
-package utils;
+package migrator.utils;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -18,19 +18,19 @@ public class OracleConnection {
     private Connection connection;
 
     // Параметры подключения (лучше вынести в конфиг-файл)
-    private static final String DB_URL = "jdbc:oracle:thin:@localhost:1521/ORCLPDB1";
-    private static final String DB_USER = "CMOP";
-    private static final String DB_PASSWORD = "CMOP";
+    private static String DB_URL;
+    private static String DB_USER;
+    private static String DB_PASSWORD;
     // Приватный конструктор (запрещаем создание экземпляров извне)
     private OracleConnection() {
         // Инициализация подключения при создании синглтона
-        initConnection();
+//        initConnection();
     }
 
     /**
      * Инициализация подключения к БД
      */
-    private Connection initConnection() {
+    private Connection initConnection(String dbUrl, String dbUser, String dbPassword) {
         try {
             // Загружаем JDBC драйвер Oracle (для старых версий Java)
             Class.forName("oracle.jdbc.driver.OracleDriver");
@@ -74,7 +74,7 @@ public class OracleConnection {
      * @return Connection объект
      */
     public Connection getConnection() {
-        return initConnection(); 
+        return initConnection(DB_URL, DB_USER, DB_PASSWORD); 
     }
 
     /**

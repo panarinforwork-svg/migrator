@@ -22,7 +22,8 @@ import org.apache.logging.log4j.Logger;
 import migrator.dblink.DblinkAnalyzer;
 import migrator.issues.CallReorder;
 import migrator.issues.ConnectByLevel;
-import migrator.issues.DblinkToFdw;
+import migrator.issues.DblinkFunctionConverter;
+import migrator.issues.DblinkTableConverter;
 import migrator.issues.DbmsLoad;
 import migrator.issues.DbmsSession;
 import migrator.issues.FinalArrayFix;
@@ -41,7 +42,8 @@ import migrator.issues.ReplaceOpenCommentWithComment;
 import migrator.issues.SubstrNamedParams;
 import migrator.issues.UtlHttp;
 import migrator.params.Parametrs;
-import utils.FilesUtils;
+import migrator.utils.FilesUtils;
+import migrator.utils.Ora2PgConfig;
 
 public class Searcher {
 	public final String projectPath;
@@ -50,8 +52,9 @@ public class Searcher {
 	
 	private List<Issue> issues = List.of(
 			new InitializationBlock(),
-			new DblinkToFdw(),
-//			new SubstrNamedParams(),
+//			new SubstrNamedParams()
+			new DblinkFunctionConverter(),
+			new DblinkTableConverter(),
 			new DbmsLoad(), 
 			new UtlHttp(),
 			new MergeInto(),
@@ -82,6 +85,12 @@ public class Searcher {
 	
 	public Searcher(Parametrs params) {
 		projectPath = params.path;
+		try {
+			Ora2PgConfig config = new Ora2PgConfig(params.path + "/config/ora2pg.conf");
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		issues.stream().forEach(x -> filesByIssues.put(x.getClass(), new ArrayList()));
 		postApplyIssues.stream().forEach(x -> filesByIssues.put(x.getClass(), new ArrayList()));
 	}
